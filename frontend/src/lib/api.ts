@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'https://note-taking-six-blue.vercel.app', 
+  baseURL: 'https://note-taking-app-h8ko.vercel.app', 
 });
 
 API.interceptors.request.use(

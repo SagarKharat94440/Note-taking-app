@@ -3,7 +3,7 @@ import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import { generateOTP, saveOTP, verifyOTP } from "../utils/otp.js";
 import nodemailer from "nodemailer";
-
+import { verifyGoogleIdToken } from "../utils/googleVerify.js";
 
 const router = Router();
 
@@ -12,6 +12,7 @@ function signToken(payload: any) {
   return jwt.sign(payload, secret, { expiresIn: "7d" });
 }
 
+// send OTP
 router.post("/send-otp", async (req, res) => {
   try {
     const { email, name } = req.body;
@@ -38,9 +39,7 @@ router.post("/send-otp", async (req, res) => {
         subject: "Your OTP for Notes App",
         text: `Your OTP is ${otp}`
       });
-    } else {
-      console.log(`OTP for ${email}: ${otp}`);
-    }
+    } 
 
     return res.json({ message: "OTP sent" });
   } catch (err) {
@@ -70,12 +69,13 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 
-
 router.post("/login-send-otp", async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email required" });
 
+
+    
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -84,6 +84,7 @@ router.post("/login-send-otp", async (req, res) => {
 
     const otp = generateOTP();
     saveOTP(email, otp, Number(process.env.OTP_EXPIRY_MIN || 10));
+
     if (process.env.EMAIL_USER) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
@@ -98,9 +99,7 @@ router.post("/login-send-otp", async (req, res) => {
         subject: "Your Login OTP for HD App",
         text: `Your OTP to sign in is ${otp}`
       });
-    } else {
-      console.log(`LOGIN OTP for ${email}: ${otp}`);
-    }
+    } 
 
     return res.json({ message: "OTP sent for login" });
   } catch (err) {
@@ -108,6 +107,7 @@ router.post("/login-send-otp", async (req, res) => {
     return res.status(500).json({ message: "Failed to send OTP" });
   }
 });
+
 
 router.post("/login-verify-otp", async (req, res) => {
   try {
@@ -131,3 +131,33 @@ router.post("/login-verify-otp", async (req, res) => {
   }
 });
 
+
+router.post("/google-login", async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ message: "Google ID Token is required" });
+
+    const payload = await verifyGoogleIdToken(idToken);
+    if (!payload || !payload.email) {
+      return res.status(400).json({ message: "Invalid Google token" });
+    }
+
+    const { email, name } = payload;
+    
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      user = await User.create({ email, name: name || 'Google User' });
+    }
+    
+    const token = signToken({ userId: user._id, email: user.email, name: user.name });
+
+    return res.json({ token, user: { email: user.email, name: user.name, id: user._id } });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Google login failed" });
+  }
+});
+
+export default router;
